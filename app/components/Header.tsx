@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useUIStore } from '@/store/uiStore';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -8,13 +9,19 @@ interface HeaderProps {
 }
 
 const Header = ({ toggleSidebar, toggleActionOverlay }: HeaderProps) => {
+  // Get header visibility state from UI store
+  const isHeaderVisible = useUIStore(state => state.isHeaderVisible);
+  
+  // Don't render the header if it's not visible
+  if (!isHeaderVisible) return null;
+  
   return (
     <>
       <StatusBar barStyle="light-content" />
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.menuButton}
-          onPress={toggleSidebar} // Use the passed function here
+          onPress={toggleSidebar}
         >
           <Feather name="menu" size={24} color="white" />
           <Text style={styles.menuText}>Menu</Text>
@@ -22,7 +29,7 @@ const Header = ({ toggleSidebar, toggleActionOverlay }: HeaderProps) => {
 
         <TouchableOpacity 
           style={styles.profileButton}
-          onPress={toggleActionOverlay} // Use the passed function here
+          onPress={toggleActionOverlay}
         >
           <View style={styles.profileIcon}>
             <Feather name="user" size={18} color="white" />

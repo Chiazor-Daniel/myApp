@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,63 +8,26 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-  Animated,
   Keyboard,
   Dimensions,
-  PanResponder
+  ActivityIndicator
 } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import LinearBg from '../components/LinearBg';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useLoginMutation } from '@/services/api';
+import { useAuthStore } from '@/store/authStore';
+import Toast from 'react-native-toast-message';
 
 const windowHeight = Dimensions.get('window').height;
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('sukkepipsi@gufum.com');
+  const [password, setPassword] = useState('Tester12345');
   const [showPassword, setShowPassword] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  
-  // Animated values
-  const formHeight = useRef(new Animated.Value(400)).current;
-  const topSectionOpacity = useRef(new Animated.Value(1)).current;
-  const imageTranslateY = useRef(new Animated.Value(0)).current;
-  const scrollY = useRef(new Animated.Value(0)).current;
-  
-  // Pan responder for drag gestures
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only respond to vertical movements with some threshold
-        return Math.abs(gestureState.dy) > 10;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // If dragging up and not at max height or dragging down and not at min height
-        if ((gestureState.dy < 0 && formHeight._value < 600) || 
-            (gestureState.dy > 0 && formHeight._value > 400)) {
-          // Calculate new form height based on drag
-          const newHeight = Math.max(400, Math.min(600, formHeight._value - gestureState.dy));
-          formHeight.setValue(newHeight);
-          
-          // Adjust opacity and translation proportionally
-          const progress = (newHeight - 400) / 200; // 0 to 1 based on form height
-          topSectionOpacity.setValue(1 - progress);
-          
-          // Move image UP into the empty space when using gesture
-          if (!keyboardVisible) {
-            imageTranslateY.setValue(-150 * progress); // Move up into empty space
-          }
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // When released, snap to either expanded or collapsed state
-        const expand = gestureState.dy < 0; // Expand if dragged up
-        animateFormState(expand);
-      },
-    })
-  ).current;
 
   // Effect for keyboard events
   useEffect(() => {
@@ -72,7 +35,6 @@ export default function LoginScreen() {
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       () => {
         setKeyboardVisible(true);
-        animateFormState(true, true); // Pass true for keyboard
       }
     );
     
@@ -80,7 +42,6 @@ export default function LoginScreen() {
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setKeyboardVisible(false);
-        animateFormState(false); // Return to default state
       }
     );
 
@@ -90,83 +51,76 @@ export default function LoginScreen() {
     };
   }, []);
 
-  // Animation function for transitioning between states
-  const animateFormState = (expand, isKeyboard = false) => {
-    Animated.parallel([
-      Animated.timing(formHeight, {
-        toValue: expand ? 600 : 400,
-        duration: 300,
-        useNativeDriver: false
-      }),
-      Animated.timing(topSectionOpacity, {
-        toValue: expand ? 0 : 1,
-        duration: 300,
-        useNativeDriver: false
-      }),
-      Animated.timing(imageTranslateY, {
-        // When keyboard is visible, move image DOWN below the Register Now
-        // When just using gesture, move image UP to fill empty space
-        toValue: expand ? (isKeyboard ? 300 : -150) : 0,
-        duration: 300,
-        useNativeDriver: false
-      })
-    ]).start();
-  };
-
-  const handleLogin = () => {
-    router.replace('/welcome');
+  const [login, { isLoading }] = useLoginMutation();
+  const { login: setAuth } = useAuthStore();
+ 
+  const handleLogin = async () => {
+    try {
+      const response = await login({ email, password }).unwrap();
+      console.log(response);
+      setAuth(response.token, response.expires_at, response.user);
+      Toast.show({
+        type: 'success',
+        text1: 'Login successful!',
+        position: 'bottom',
+        visibilityTime: 3000,
+        autoHide: true,
+        bottomOffset: 40,
+        onShow: () => {},
+        onHide: () => { router.replace('/performance') }
+      });
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: 'Login failed',
+        text2: 'Please check your credentials',
+        position: 'bottom',
+        visibilityTime: 4000,
+        bottomOffset: 40
+      });
+      console.error('Login error:', err);
+    }
   };
 
   return (
     <LinearBg>
-      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <StatusBar style="light" />
         
-        <ScrollView 
+        <KeyboardAwareScrollView
           contentContainerStyle={styles.scrollContainer}
-          scrollEnabled={!keyboardVisible}
-          scrollEventThrottle={16}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
+          extraScrollHeight={20}
+          enableOnAndroid={true}
+          scrollEnabled={true}
         >
-          <Animated.View style={[
+          <View style={[
             styles.topSection,
-            { opacity: topSectionOpacity }
+            keyboardVisible && { height: 120, opacity: 0.6 }
           ]}>
             <View style={styles.textContainer}>
               <Text style={styles.title}>Unlock Your Potential With</Text>
               <Text style={styles.boldTitle}>Our Interactive Textbook.</Text>
 
-              <Text style={styles.subtitle}>
-                Discover a smarter way to learn with interactive textbooks for a 21st-century education.
-              </Text>
+              {!keyboardVisible && (
+                <Text style={styles.subtitle}>
+                  Discover a smarter way to learn with interactive textbooks for a 21st-century education.
+                </Text>
+              )}
             </View>
-          </Animated.View>
+          </View>
 
-          <Animated.Image
+          <Image
             source={require('../../assets/login.png')}
             style={[
               styles.loginImage,
-              { 
-                transform: [
-                  { translateX: -100 },
-                  { translateY: Animated.add(-80, imageTranslateY) },
-                  { scale: 0.9 }
-                ],
-                zIndex: keyboardVisible ? 0 : 99 // Lower zIndex when keyboard is visible
-              }
+              keyboardVisible && { opacity: 0 }
             ]}
           />
 
-          <Animated.View 
-            style={[
-              styles.formSection,
-              { height: formHeight }
-            ]}
-            {...panResponder.panHandlers}
-          >
+          <View style={styles.formSection}>
             <View style={styles.formHandle} />
             <Text style={styles.formTitle}>Login to Begin</Text>
 
@@ -208,8 +162,13 @@ export default function LoginScreen() {
             <TouchableOpacity
               style={styles.loginButton}
               onPress={handleLogin}
+              disabled={isLoading}
             >
-              <Text style={styles.loginButtonText}>Login</Text>
+              {isLoading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.loginButtonText}>Login</Text>
+              )}
             </TouchableOpacity>
 
             <View style={styles.signupContainer}>
@@ -218,24 +177,23 @@ export default function LoginScreen() {
                 <Text style={styles.signupLink}>Register now</Text>
               </TouchableOpacity>
             </View>
-          </Animated.View>
-        </ScrollView>
-      </View>
+          </View>
+        </KeyboardAwareScrollView>
+      </KeyboardAvoidingView>
     </LinearBg>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1E293B',
-  },
   scrollContainer: {
     flexGrow: 1,
+    justifyContent: 'space-between',
   },
   topSection: {
     padding: 20,
     paddingTop: 60,
+    height: 200,
+    transition: '0.3s',
   },
   textContainer: {
     marginBottom: 20,
@@ -264,11 +222,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     padding: 20,
     paddingTop: 30,
-    paddingBottom: 70,
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    paddingBottom: 40,
   },
   formHandle: {
     width: 40,
@@ -345,9 +299,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   loginImage: {
-    position: 'absolute',
-    objectFit: 'cover',
-    top: '30%',
-    left: '50%',
+    alignSelf: 'center',
+    width: 200,
+    height: 200,
+    resizeMode: 'contain',
+    marginBottom: -30,
   },
 });

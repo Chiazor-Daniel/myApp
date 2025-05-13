@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   View, 
   Text, 
@@ -9,6 +9,8 @@ import {
   Platform 
 } from 'react-native';
 import { router, usePathname } from 'expo-router';
+import { useAuthStore } from '@/store/authStore';
+import { Alert } from 'react-native';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 
@@ -24,6 +26,7 @@ const Sidebar = ({ isVisible, onClose }: SidebarProps) => {
   const pathname = usePathname();
   const translateX = React.useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const [mounted, setMounted] = React.useState(false);
+  const { logout } = useAuthStore();
   
   React.useEffect(() => {
     if (isVisible) {
@@ -51,23 +54,18 @@ const Sidebar = ({ isVisible, onClose }: SidebarProps) => {
   };
 
   const menuItems = [
+   
     { 
-      icon: 'grid-view', 
+      icon: 'bar-chart', 
       label: 'Dashboard', 
-      path: '/welcome',
-      component: MaterialIcons 
+      path: '/performance',
+      component: Feather 
     },
     { 
       icon: 'book', 
       label: 'Study', 
       path: '/subjects-list',
       component: MaterialIcons 
-    },
-    { 
-      icon: 'bar-chart', 
-      label: 'Performance metrics', 
-      path: '/performance',
-      component: Feather 
     },
     { 
       icon: 'file-text', 
@@ -87,6 +85,14 @@ const Sidebar = ({ isVisible, onClose }: SidebarProps) => {
       path: '/profile',
       component: Feather 
     },
+    { 
+      icon: 'chat', 
+      label: 'Talk to an AI Tutor', 
+      path: '/welcome',
+      component: MaterialIcons 
+    }
+    
+   
   ];
 
   if (!mounted && !isVisible) return null;
@@ -146,9 +152,25 @@ const Sidebar = ({ isVisible, onClose }: SidebarProps) => {
         <TouchableOpacity 
           style={styles.logoutButton}
           onPress={() => {
-            onClose();
-            // Handle logout logic here
-            router.replace('/');
+            Alert.alert(
+              'Logout',
+              'Are you sure you want to logout?',
+              [
+                {
+                  text: 'Cancel',
+                  style: 'cancel'
+                },
+                {
+                  text: 'Logout',
+                  onPress: () => {
+                    onClose();
+                    logout();
+                    router.replace('/(auth)/login');
+                  },
+                  style: 'destructive'
+                }
+              ]
+            );
           }}
         >
           <Feather name="log-out" size={20} color="#CBD5E1" />
@@ -179,6 +201,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     justifyContent: 'space-between',
     borderRightWidth: 1,
+    gap: 10,
     borderRightColor: '#334155',
   },
   menuItems: {

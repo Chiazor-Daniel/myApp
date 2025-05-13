@@ -1,45 +1,56 @@
 // TopicsScreen.js
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, SafeAreaView, StatusBar } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, SafeAreaView, StatusBar, ActivityIndicator, RefreshControl } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useLocalSearchParams } from 'expo-router';
+import { useGetTopicsQuery } from '@/services/api';
 
-// Sample data for Biology topics (matching the screenshot)
-const biologyTopics = [
-  { id: '01', title: 'Cell Organization' },
-  { id: '02', title: 'Basic Functions Of Living Organism' },
-  { id: '03', title: 'Classification Of Living Organism' },
-  { id: '04', title: 'Digestive System' },
-  { id: '05', title: 'Respiratory System' },
-  { id: '06', title: 'Plants' },
-  { id: '07', title: 'Cell Organization', new: true },
-  { id: '08', title: 'Cell Organization' },
-];
 
-// For other subjects we would have different topics
-const topicsBySubject = {
-  'Biology': biologyTopics,
-  // Add other subjects' topics here
-};
 
 export default function TopicsScreen() {
-  const { subject } = useLocalSearchParams<{
+  const { subject, subjectId } = useLocalSearchParams<{
     subject: string;
+    subjectId: string;
   }>();
-  console.log("seen", subject);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   
-  const topics = topicsBySubject[subject as string] || [];
+  // Use the subject ID passed from the subjects list screen
+  const subjectIdNumber = parseInt(subjectId || '4', 10);
+  
+  const { data: topicsData, isLoading, error, refetch } = useGetTopicsQuery(subjectIdNumber);
+
+  useEffect(() => {
+    console.log(topicsData);
+  }, [topicsData]);
+  
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
+  
+  // Filter topics based on search query
+  const filteredTopics = topicsData?.results?.filter(topic => 
+    topic.title.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
 
   const handleTopicPress = (topic) => {
-    // Navigate to the topic content screen
-    router.push(`/(tabs)/subjects-list/${subject}/slug/${topic}`);
+    // Navigate to the topic content screen with subject and topic IDs
+    router.push({
+      pathname: `/(tabs)/subjects-list/${subject}/slug/${topic.slug}`,
+      params: { 
+        subjectId: subjectIdNumber,
+        topicId: topic.id
+      }
+    });
   };
 
-  const renderTopicItem = ({ item }) => (
+  const renderTopicItem = ({ item, index }: { item: any; index: number }) => (
     <View style={styles.topicItem}>
       <View style={styles.topicNumberContainer}>
-        <Text style={styles.topicNumber}>{item.id}</Text>
+        <Text style={styles.topicNumber}>{(index + 1).toString().padStart(2, '0')}</Text>
       </View>
       <View style={styles.topicTitleContainer}>
         <Text style={styles.topicTitle}>{item.title}</Text>
@@ -52,9 +63,9 @@ export default function TopicsScreen() {
         <Text style={styles.startButtonText}>Start Topic</Text>
       </TouchableOpacity>
       
-      {item.new && (
+      {item.active_classes && item.active_classes.length > 0 && (
         <View style={styles.newBadge}>
-          <Text style={styles.newBadgeText}>NEW</Text>
+          <Text style={styles.newBadgeText}>LIVE</Text>
         </View>
       )}
     </View>
@@ -79,17 +90,57 @@ export default function TopicsScreen() {
             style={styles.searchInput}
             placeholder="Search by topic"
             placeholderTextColor="#64748B"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
         </View>
         
+        {/* Loading State */}
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#6B8AF7" />
+            <Text style={styles.loadingText}>Loading topics...</Text>
+          </View>
+        )}
+        
+        {/* Error State */}
+        {error && (
+          <View style={styles.errorContainer}>
+            <Feather name="alert-circle" size={40} color="#EF4444" />
+            <Text style={styles.errorText}>Failed to load topics</Text>
+            <TouchableOpacity style={styles.retryButton}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {/* Empty State */}
+        {!isLoading && !error && filteredTopics.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <Feather name="book" size={40} color="#64748B" />
+            <Text style={styles.emptyText}>No topics found</Text>
+          </View>
+        )}
+        
         {/* Topics List */}
-        <FlatList
-          data={topics}
-          renderItem={renderTopicItem}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-        />
+        {!isLoading && !error && filteredTopics.length > 0 && (
+          <FlatList
+            data={filteredTopics}
+            renderItem={renderTopicItem}
+            keyExtractor={item => item.id.toString()}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={['#6B8AF7']}
+                tintColor="#6B8AF7"
+                progressBackgroundColor="rgba(255, 255, 255, 0.1)"
+              />
+            }
+          />
+        )}
       </SafeAreaView>
   );
 }
@@ -198,7 +249,49 @@ const styles = StyleSheet.create({
   },
   topicTitle: {
     fontSize: 16,
+    color: 'white',
     fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#94A3B8',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#EF4444',
+    marginBottom: 16,
+  },
+  retryButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#3B82F6',
+    borderRadius: 8,
+  },
+  retryText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#94A3B8',
     color: 'white',
   },
   startButton: {

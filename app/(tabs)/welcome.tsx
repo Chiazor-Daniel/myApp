@@ -14,32 +14,36 @@ import { Feather, FontAwesome } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
 import Header from '../components/Header';
 import LinearBg from '../components/LinearBg';
+import { useAuthStore } from '@/store/authStore';
 
 export default function WelcomeScreen({ navigation }: { navigation: any }) {
+  const { user } = useAuthStore();
   const [userInput, setUserInput] = useState('');
-  const [messages, setMessages] = useState<Array<{text: string, isUser: boolean}>>([]);
+  const [messages, setMessages] = useState<Array<{ text: string, isUser: boolean }>>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const scale = useSharedValue(1);
-const opacity = useSharedValue(0);
-
-useEffect(() => {
-  // Animate in when component mounts
-  scale.value = withTiming(1, { duration: 300 });
-  opacity.value = withTiming(1, { duration: 300 });
-}, []);
-
-const botAnimatedStyle = useAnimatedStyle(() => ({
-  transform: [{ scale: scale.value }],
-  opacity: opacity.value
-}));
+  const opacity = useSharedValue(0);
 
   useEffect(() => {
-    // No initial welcome message as requested
-    Speech.speak('Welcome Donatus, What would you like to learn?');
+    // Animate in when component mounts
+    scale.value = withTiming(1, { duration: 300 });
+    opacity.value = withTiming(1, { duration: 300 });
   }, []);
-  
+
+  useEffect(() => {
+    // Use the user's name from Zustand
+    if (user?.full_name) {
+      Speech.speak(`Ask me a question i'm here to help you`);
+    }
+  }, [user?.full_name]);
+
+  const botAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value
+  }));
+
   const stopSpeech = () => {
     if (isSpeaking) {
       Speech.stop();
@@ -60,10 +64,10 @@ const botAnimatedStyle = useAnimatedStyle(() => ({
     const userMessage = userInput.trim();
     setMessages(prev => [...prev, { text: userMessage, isUser: true }]);
     setUserInput('');
-    
+
     // Scroll to bottom with user's message
     setTimeout(scrollToBottom, 100);
-    
+
     // Show loading indicator for AI response
     setIsLoading(true);
 
@@ -74,20 +78,20 @@ const botAnimatedStyle = useAnimatedStyle(() => ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: `${userMessage}. Respond briefly and concisely` }] }],
+            contents: [{ parts: [{ text: `${userMessage}` }] }],
           }),
         }
       );
 
       const data = await res.json();
       setIsLoading(false);
-      
+
       const aiReply = data?.candidates?.[0]?.content?.parts?.[0]?.text.replace(/\*/g, "") || 'Sorry, I could not understand.';
       setMessages(prev => [...prev, { text: aiReply, isUser: false }]);
-      
+
       // Scroll to bottom with AI's response
       setTimeout(scrollToBottom, 100);
-      
+
       setIsSpeaking(true);
       Speech.speak(aiReply, {
         onDone: () => setIsSpeaking(false),
@@ -102,96 +106,99 @@ const botAnimatedStyle = useAnimatedStyle(() => ({
   };
 
   return (
-      <View style={styles.content}>
-        <View style={styles.textContainer}>
-          <Text style={styles.title}>Welcome</Text>
-          <Text style={styles.subtitle}>Hello Donatus. What would you like to learn?</Text>
-        </View>
+    <View style={styles.content}>
 
-        {/* Robot image centered in the screen */}
-        <Animated.View style={[styles.botContainer, botAnimatedStyle]}>
-  <Image source={require('../../assets/robotw.png')} style={styles.botImage} />
-</Animated.View>
+      <View style={styles.textContainer}>
+        <Text style={styles.title}>Welcome</Text>
+        <Text style={styles.subtitle}>
+          Hello {user?.full_name}. Ready to continue learning?
+        </Text>
+      </View>
 
-        {/* Chat container positioned above the input field */}
-        <View style={styles.chatContainer}>
-          <ScrollView 
-            ref={scrollViewRef}
-            style={styles.chatBox}
-            contentContainerStyle={styles.chatContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {messages.map((msg, index) => (
-              <View 
-                key={index} 
+      {/* Robot image centered in the screen */}
+      <Animated.View style={[styles.botContainer, botAnimatedStyle]}>
+        <Image source={require('../../assets/robotw.png')} style={styles.botImage} />
+      </Animated.View>
+
+      {/* Chat container positioned above the input field */}
+      <View style={styles.chatContainer}>
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.chatBox}
+          contentContainerStyle={styles.chatContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {messages.map((msg, index) => (
+            <View
+              key={index}
+              style={[
+                styles.messageRow,
+                msg.isUser ? styles.userRow : styles.aiRow
+              ]}
+            >
+              <View
                 style={[
-                  styles.messageRow,
-                  msg.isUser ? styles.userRow : styles.aiRow
+                  styles.messageBubble,
+                  msg.isUser ? styles.userBubble : styles.aiBubble
                 ]}
               >
-                <View 
-                  style={[
-                    styles.messageBubble, 
-                    msg.isUser ? styles.userBubble : styles.aiBubble
-                  ]}
-                >
-                  {!msg.isUser && (
-                    <View style={styles.robotIconContainer}>
-                      <Image source={require('../../assets/robotc.png')} style={styles.botIcon} />
-                    </View>
-                  )}
-                  <Text style={[styles.messageText, msg.isUser ? styles.userText : styles.aiText]}>
-                    {msg.text}
-                  </Text>
-                  {msg.isUser && (
-                    <View style={styles.userIconContainer}>
-                      <FontAwesome name="user" size={14} color="#fff" />
-                    </View>
-                  )}
-                </View>
-              </View>
-            ))}
-            
-            {/* Loading indicator while waiting for AI response */}
-            {isLoading && (
-              <View style={styles.messageRow}>
-                <View style={[styles.messageBubble, styles.aiBubble, styles.loadingBubble]}>
+                {!msg.isUser && (
                   <View style={styles.robotIconContainer}>
                     <Image source={require('../../assets/robotc.png')} style={styles.botIcon} />
                   </View>
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color="#fff" />
+                )}
+                <Text style={[styles.messageText, msg.isUser ? styles.userText : styles.aiText]}>
+                  {msg.text}
+                </Text>
+                {msg.isUser && (
+                  <View style={styles.userIconContainer}>
+                    <FontAwesome name="user" size={14} color="#fff" />
                   </View>
+                )}
+              </View>
+            </View>
+          ))}
+
+          {/* Loading indicator while waiting for AI response */}
+          {isLoading && (
+            <View style={styles.messageRow}>
+              <View style={[styles.messageBubble, styles.aiBubble, styles.loadingBubble]}>
+                <View style={styles.robotIconContainer}>
+                  <Image source={require('../../assets/robotc.png')} style={styles.botIcon} />
+                </View>
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#fff" />
                 </View>
               </View>
-            )}
-          </ScrollView>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Input container fixed at the bottom */}
+      <View style={styles.inputWrapper}>
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="What can I do for you today?"
+            placeholderTextColor="#666"
+            value={userInput}
+            onChangeText={setUserInput}
+          />
+          <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+            <Feather name="send" size={20} color="#666" />
+          </TouchableOpacity>
         </View>
 
-        {/* Input container fixed at the bottom */}
-        <View style={styles.inputWrapper}>
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="What can I do for you today?"
-              placeholderTextColor="#666"
-              value={userInput}
-              onChangeText={setUserInput}
-            />
-            <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-              <Feather name="send" size={20} color="#666" />
-            </TouchableOpacity>
-          </View>
-          
-          {/* Stop speech button */}
-          {isSpeaking && (
-            <TouchableOpacity style={styles.stopSpeechButton} onPress={stopSpeech}>
-              <Feather name="volume-x" size={20} color="white" />
-              <Text style={styles.stopSpeechText}>Stop</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* Stop speech button */}
+        {isSpeaking && (
+          <TouchableOpacity style={styles.stopSpeechButton} onPress={stopSpeech}>
+            <Feather name="volume-x" size={20} color="white" />
+            <Text style={styles.stopSpeechText}>Stop</Text>
+          </TouchableOpacity>
+        )}
       </View>
+    </View>
   );
 }
 
@@ -202,6 +209,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
   textContainer: {
     width: '100%',
     alignItems: 'center',
@@ -231,7 +239,7 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
   botImage: {
-    transform: [{ scale:1 }],
+    transform: [{ scale: 1 }],
   },
   chatContainer: {
     flex: 1,
@@ -264,7 +272,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 18,
     padding: 10,
-    
+
     // Remove maxWidth to allow bubble to fit content
   },
   userBubble: {
@@ -276,7 +284,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 4,
     flex: 1,
     paddingRight: 20
-    
+
   },
   messageContent: {
     flex: 1, // Allow text content to take available space
@@ -309,7 +317,7 @@ const styles = StyleSheet.create({
   userIconContainer: {
     width: 24,
     height: 24,
-    borderRadius: 12, 
+    borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -359,3 +367,4 @@ const styles = StyleSheet.create({
     height: 24,
   },
 });
+

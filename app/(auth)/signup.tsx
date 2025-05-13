@@ -1,23 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  Image, 
-  KeyboardAvoidingView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Animated,
   Keyboard,
   Dimensions,
-  PanResponder
+  PanResponder,
+  ActivityIndicator
 } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import LinearBg from '../components/LinearBg';
+import { useSignupMutation } from '@/services/api';
+import Toast from 'react-native-toast-message';
 
 const windowHeight = Dimensions.get('window').height;
 
@@ -29,41 +32,39 @@ export default function AuthScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  
+  const [isLoading, setIsLoading] = useState(false);
+
   // Animated values
   const formHeight = useRef(new Animated.Value(400)).current;
   const topSectionOpacity = useRef(new Animated.Value(1)).current;
   const imageTranslateY = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
-  
+
+  // Signup mutation hook
+  const [signup] = useSignupMutation();
+
   // Pan responder for drag gestures
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only respond to vertical movements with some threshold
         return Math.abs(gestureState.dy) > 10;
       },
       onPanResponderMove: (_, gestureState) => {
-        // If dragging up and not at max height or dragging down and not at min height
-        if ((gestureState.dy < 0 && formHeight._value < 600) || 
+        if ((gestureState.dy < 0 && formHeight._value < 600) ||
             (gestureState.dy > 0 && formHeight._value > 400)) {
-          // Calculate new form height based on drag
           const newHeight = Math.max(400, Math.min(600, formHeight._value - gestureState.dy));
           formHeight.setValue(newHeight);
-          
-          // Adjust opacity and translation proportionally
-          const progress = (newHeight - 400) / 200; // 0 to 1 based on form height
+
+          const progress = (newHeight - 400) / 200;
           topSectionOpacity.setValue(1 - progress);
           
-          // Move image UP into the empty space when using gesture
           if (!keyboardVisible) {
-            imageTranslateY.setValue(-150 * progress); // Move up into empty space
+            imageTranslateY.setValue(-150 * progress);
           }
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        // When released, snap to either expanded or collapsed state
-        const expand = gestureState.dy < 0; // Expand if dragged up
+        const expand = gestureState.dy < 0;
         animateFormState(expand);
       },
     })
@@ -75,15 +76,15 @@ export default function AuthScreen() {
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       () => {
         setKeyboardVisible(true);
-        animateFormState(true, true); // Pass true for keyboard
+        animateFormState(true, true);
       }
     );
-    
+
     const keyboardWillHideListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setKeyboardVisible(false);
-        animateFormState(false); // Return to default state
+        animateFormState(false);
       }
     );
 
@@ -93,7 +94,7 @@ export default function AuthScreen() {
     };
   }, []);
 
-  // Animation function for transitioning between states
+  // Animation function
   const animateFormState = (expand, isKeyboard = false) => {
     Animated.parallel([
       Animated.timing(formHeight, {
@@ -107,8 +108,6 @@ export default function AuthScreen() {
         useNativeDriver: false
       }),
       Animated.timing(imageTranslateY, {
-        // When keyboard is visible, move image DOWN below the Log In
-        // When just using gesture, move image UP to fill empty space
         toValue: expand ? (isKeyboard ? 300 : -150) : 0,
         duration: 300,
         useNativeDriver: false
@@ -116,34 +115,78 @@ export default function AuthScreen() {
     ]).start();
   };
 
-  const handleSignUp = () => {
-    // Validate inputs
+  const handleSignUp = async () => {
     if (!fullName || !email || !password || !confirmPassword) {
-      alert('Please fill in all fields');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please fill in all fields',
+      });
       return;
     }
-    
+
     if (password !== confirmPassword) {
-      alert('Passwords do not match');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Passwords do not match',
+      });
       return;
     }
-    
-    // Password validation
+
     const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{6,}$/;
     if (!passwordRegex.test(password)) {
-      alert('Password must contain a capital letter, a number, and be minimum of 6 characters');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Password must contain a capital letter, a number, and be minimum of 6 characters',
+      });
       return;
     }
-    
-    // Navigate to welcome screen after successful signup
-    router.replace('/welcome');
+
+    setIsLoading(true);
+    try {
+      const response = await signup({
+        email,
+        full_name: fullName,
+        password,
+        password_confirmation: confirmPassword
+      }).unwrap();
+
+      Toast.show({
+        type: 'success',
+        text1: 'Account created successfully!',
+        text2: 'Please check your email to verify your account',
+      });
+
+      // Navigate to login after successful signup
+      setTimeout(() => {
+        router.replace('/(auth)/login');
+      }, 2000);
+    } catch (error: any) {
+      let errorMessage = 'Signup failed. Please try again.';
+      if (error.data && error.data.message) {
+        errorMessage = error.data.message;
+      } else if (error.data && error.data.errors) {
+        errorMessage = Object.values(error.data.errors).join('\n');
+      }
+
+      Toast.show({
+        type: 'error',
+        text1: 'Signup Error',
+        text2: errorMessage,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <LinearBg>
       <View style={styles.container}>
         <StatusBar style="light" />
-        
+        <Toast />
+
         <ScrollView 
           contentContainerStyle={styles.scrollContainer}
           scrollEnabled={!keyboardVisible}
@@ -177,7 +220,7 @@ export default function AuthScreen() {
                   { translateY: Animated.add(180, imageTranslateY) }, 
                   { scale: 0.9 }
                 ],
-                zIndex: keyboardVisible ? 0 : 99 // Lower zIndex when keyboard is visible
+                zIndex: keyboardVisible ? 0 : 99
               }
             ]} 
           />
@@ -259,8 +302,13 @@ export default function AuthScreen() {
             <TouchableOpacity 
               style={styles.signupButton}
               onPress={handleSignUp}
+              disabled={isLoading}
             >
-              <Text style={styles.signupButtonText}>Sign Up</Text>
+              {isLoading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.signupButtonText}>Sign Up</Text>
+              )}
             </TouchableOpacity>
             
             <View style={styles.loginContainer}>

@@ -1,28 +1,44 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, FlatList, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, FlatList, Dimensions, Image, ActivityIndicator } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useGetSubjectsQuery } from '@/services/api';
 import NoticeBoard from '../components/Noticeboard';
+
 
 const { width, height } = Dimensions.get('window');
 
-const subjects = [
-  { id: '1', name: 'Biology', icon: '🧬', topics: 8 },
-  { id: '2', name: 'Chemistry', icon: '🧪', topics: 6 },
-  { id: '3', name: 'Physics', icon: '⚛️', topics: 7 },
-  { id: '4', name: 'Mathematics', icon: '📊', topics: 9 },
-  { id: '5', name: 'Computer Science', icon: '💻', topics: 5 },
-  { id: '6', name: 'History', icon: '📜', topics: 4 },
-  { id: '7', name: 'Geography', icon: '🌍', topics: 6 },
-  { id: '8', name: 'Literature', icon: '📚', topics: 5 },
-];
-
 const AssessmentNotification = ({ navigation }: { navigation: any }) => {
+  const { data: subjectsData, isLoading, error } = useGetSubjectsQuery();
+  const subjects = subjectsData?.results || [];
   const [subjectModalVisible, setSubjectModalVisible] = useState(false);
+  const [modalType, setModalType] = useState<'quiz' | 'exam'>('quiz');
 
   const handleSubjectSelect = (subject) => {
     setSubjectModalVisible(false);
-    router.push(`/(tabs)/subjects-list/${subject.name}/quiz/${subject.name}`);
+    const type = modalType;
+    
+    if (type === 'quiz') {
+      router.push({
+        pathname: `/(tabs)/subjects-list/${subject.slug}/quiz/${subject.slug}`,
+        params: { subjectId: subject.id }
+      });
+    } else if (type === 'exam') {
+      router.push({
+        pathname: `/(tabs)/subjects-list/${subject.slug}/exam/${subject.slug}`,
+        params: { subjectId: subject.id }
+      });
+    }
+  };
+
+  const handleQuizPress = () => {
+    setModalType('quiz');
+    setSubjectModalVisible(true);
+  };
+
+  const handleExamPress = () => {
+    setModalType('exam');
+    setSubjectModalVisible(true);
   };
 
   const assignedTests = [
@@ -60,7 +76,7 @@ const AssessmentNotification = ({ navigation }: { navigation: any }) => {
         <ScrollView style={styles.optionsContainer}>
           <TouchableOpacity 
             style={styles.optionCard}
-            onPress={() => setSubjectModalVisible(true)}
+            onPress={handleQuizPress}
           >
             <View style={styles.iconContainer}>
               <MaterialCommunityIcons name="lightbulb-on" size={28} color="#fff" />
@@ -71,7 +87,7 @@ const AssessmentNotification = ({ navigation }: { navigation: any }) => {
           
           <TouchableOpacity 
             style={styles.optionCard}
-            onPress={() => navigation.navigate('AssessmentNotification')}
+            onPress={handleExamPress}
           >
             <View style={[styles.iconContainer, { backgroundColor: '#8B5CF6' }]}>
               <Feather name="file-text" size={28} color="#fff" />
@@ -108,36 +124,45 @@ const AssessmentNotification = ({ navigation }: { navigation: any }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select a Subject</Text>
-              <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => setSubjectModalVisible(false)}
-              >
-                <Feather name="x" size={24} color="#666" />
+              <Text style={styles.modalTitle}>Select a Subject for {modalType === 'quiz' ? 'Quiz' : 'Exam'}</Text>
+              <TouchableOpacity onPress={() => setSubjectModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            
-            <FlatList
-              data={subjects}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity 
-                  style={styles.subjectItem}
-                  onPress={() => handleSubjectSelect(item)}
-                >
-                  <View style={styles.subjectIconContainer}>
-                    <Text style={styles.subjectIcon}>{item.icon}</Text>
-                  </View>
-                  <View style={styles.subjectInfo}>
-                    <Text style={styles.subjectName}>{item.name}</Text>
-                    <Text style={styles.subjectTopics}>{item.topics} topics</Text>
-                  </View>
-                  <Feather name="chevron-right" size={20} color="#666" />
-                </TouchableOpacity>
-              )}
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-              contentContainerStyle={styles.subjectList}
-            />
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#3B82F6" />
+              </View>
+            ) : error ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>Failed to load subjects. Please try again.</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={subjects}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity 
+                    style={styles.subjectItem}
+                    onPress={() => handleSubjectSelect(item)}
+                  >
+                    <View style={[styles.subjectIcon, { backgroundColor: item.color || '#3B82F6' }]}>
+                      {
+                        item.image ? (  <Image source={{ uri: item.image }} style={styles.subjectImage} resizeMode="contain" />)  : (
+                          <Text style={styles.subjectEmoji}>{item.title.charAt(0)}</Text>
+                        )
+                      }
+                      
+                    </View>
+                    <View style={styles.subjectInfo}>
+                      <Text style={styles.subjectName}>{item.title}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                )}
+                contentContainerStyle={styles.subjectList}
+              />
+            )}
           </View>
         </View>
       </Modal>
@@ -266,36 +291,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-  },
-  subjectIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   subjectIcon: {
-    fontSize: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  subjectEmoji: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   subjectInfo: {
     flex: 1,
   },
   subjectName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1E293B',
-    marginBottom: 4,
-  },
-  subjectTopics: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontWeight: '500',
+    color: '#111827',
   },
   separator: {
     height: 1,
     backgroundColor: '#E5E7EB',
     marginLeft: 66,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#EF4444',
+    textAlign: 'center',
+  },
+  subjectImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
 });
 

@@ -1,39 +1,52 @@
 // SubjectsScreen.js
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, SafeAreaView, StatusBar } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, SafeAreaView, StatusBar, ActivityIndicator, Image, RefreshControl } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { router, Router, useLocalSearchParams } from 'expo-router';
+import { useGetSubjectsQuery } from '@/services/api';
 
-// Sample data for subjects
-const subjects = [
-  { id: '1', name: 'Biology', icon: '🧬', topics: 8 },
-  { id: '2', name: 'Chemistry', icon: '🧪', topics: 6 },
-  { id: '3', name: 'Physics', icon: '⚛️', topics: 7 },
-  { id: '4', name: 'Mathematics', icon: '📊', topics: 9 },
-  { id: '5', name: 'Computer Science', icon: '💻', topics: 5 },
-  { id: '6', name: 'History', icon: '📜', topics: 4 },
-  { id: '7', name: 'Geography', icon: '🌍', topics: 6 },
-  { id: '8', name: 'Literature', icon: '📚', topics: 5 },
-];
+
 
 export default function SubjectsScreen() {
- // in SubjectsScreen.js
-const handleSubjectPress = (subject) => {
-  router.push(`/(tabs)/subjects-list/${subject.name}`);
-};
+  const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const { data: subjectsData, isLoading, error, refetch } = useGetSubjectsQuery();
+  
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
+  
+  // Filter subjects based on search query
+  const filteredSubjects = subjectsData?.results?.filter(subject => 
+    subject.title.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
+  
+  const handleSubjectPress = (subject) => {
+    // Pass the subject ID and slug to the topics screen
+    router.push({
+      pathname: `/(tabs)/subjects-list/${subject.slug}`,
+      params: { subjectId: subject.id }
+    });
+  };
 
 
   const renderSubjectItem = ({ item }) => (
     <TouchableOpacity 
-      style={styles.subjectCard}
+      style={[styles.subjectCard, { borderLeftColor: item.color || '#6B8AF7', borderLeftWidth: 4 }]}
       onPress={() => handleSubjectPress(item)}
     >
       <View style={styles.subjectIconContainer}>
-        <Text style={styles.subjectIcon}>{item.icon}</Text>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.subjectImage} resizeMode="contain" />
+        ) : (
+          <Text style={styles.subjectIcon}>📚</Text>
+        )}
       </View>
       <View style={styles.subjectInfo}>
-        <Text style={styles.subjectName}>{item.name}</Text>
-        <Text style={styles.subjectTopics}>{item.topics} topics</Text>
+        <Text style={styles.subjectName}>{item.title}</Text>
+        <Text style={styles.subjectTopics}>{item.content}</Text>
       </View>
       <View style={styles.arrowContainer}>
         <Feather name="chevron-right" size={24} color="#6B8AF7" />
@@ -54,17 +67,57 @@ const handleSubjectPress = (subject) => {
             style={styles.searchInput}
             placeholder="Search by subject"
             placeholderTextColor="#64748B"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
         </View>
         
+        {/* Loading State */}
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#6B8AF7" />
+            <Text style={styles.loadingText}>Loading subjects...</Text>
+          </View>
+        )}
+        
+        {/* Error State */}
+        {error && (
+          <View style={styles.errorContainer}>
+            <Feather name="alert-circle" size={40} color="#EF4444" />
+            <Text style={styles.errorText}>Failed to load subjects</Text>
+            <TouchableOpacity style={styles.retryButton}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {/* Empty State */}
+        {!isLoading && !error && filteredSubjects.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <Feather name="book" size={40} color="#64748B" />
+            <Text style={styles.emptyText}>No subjects found</Text>
+          </View>
+        )}
+        
         {/* Subjects List */}
-        <FlatList
-          data={subjects}
-          renderItem={renderSubjectItem}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-        />
+        {!isLoading && !error && filteredSubjects.length > 0 && (
+          <FlatList
+            data={filteredSubjects}
+            renderItem={renderSubjectItem}
+            keyExtractor={item => item.id.toString()}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={['#6B8AF7']}
+                tintColor="#6B8AF7"
+                progressBackgroundColor="rgba(255, 255, 255, 0.1)"
+              />
+            }
+          />
+        )}
       </SafeAreaView>
   );
 }
@@ -149,6 +202,52 @@ const styles = StyleSheet.create({
   },
   subjectIcon: {
     fontSize: 24,
+  },
+  subjectImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#94A3B8',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#EF4444',
+    marginBottom: 16,
+  },
+  retryButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#3B82F6',
+    borderRadius: 8,
+  },
+  retryText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#94A3B8',
   },
   subjectInfo: {
     flex: 1,
